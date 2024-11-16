@@ -1,86 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Text.Json;
+﻿using System.ComponentModel.Design;
 
 namespace CpunchApp
 {
-    // Models
-    public class WorkType
-    {
-        public string Name { get; set; }
-        public decimal HourlyRate { get; set; }
-    }
-
-    public class PunchRecord
-    {
-        public string WorkTypeName { get; set; }
-        public DateTime PunchInTime { get; set; }
-        public DateTime? PunchOutTime { get; set; }
-    }
-
-    // Storage Helpers
-    public static class WorkTypeStorage
-    {
-        private static string dataDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "CpunchApp"
-        );
-        private static string filePath = Path.Combine(dataDirectory, "worktypes.json");
-
-        public static List<WorkType> LoadWorkTypes()
-        {
-            if (!Directory.Exists(dataDirectory))
-                Directory.CreateDirectory(dataDirectory);
-
-            if (!File.Exists(filePath))
-                return new List<WorkType>();
-
-            var json = File.ReadAllText(filePath);
-            return JsonSerializer.Deserialize<List<WorkType>>(json);
-        }
-
-        public static void SaveWorkTypes(List<WorkType> workTypes)
-        {
-            if (!Directory.Exists(dataDirectory))
-                Directory.CreateDirectory(dataDirectory);
-
-            var json = JsonSerializer.Serialize(workTypes, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(filePath, json);
-        }
-    }
-
-    public static class PunchStorage
-    {
-        private static string dataDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "CpunchApp"
-        );
-        private static string filePath = Path.Combine(dataDirectory, "punches.json");
-
-        public static List<PunchRecord> LoadPunchRecords()
-        {
-            if (!Directory.Exists(dataDirectory))
-                Directory.CreateDirectory(dataDirectory);
-
-            if (!File.Exists(filePath))
-                return new List<PunchRecord>();
-
-            var json = File.ReadAllText(filePath);
-            return JsonSerializer.Deserialize<List<PunchRecord>>(json);
-        }
-
-        public static void SavePunchRecords(List<PunchRecord> punches)
-        {
-            if (!Directory.Exists(dataDirectory))
-                Directory.CreateDirectory(dataDirectory);
-
-            var json = JsonSerializer.Serialize(punches, new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(filePath, json);
-        }
-    }
-
     class Program
     {
         static void Main(string[] args)
@@ -93,7 +14,7 @@ namespace CpunchApp
                 InitializeWorkTypes();
             }
 
-            var workTypes = WorkTypeStorage.LoadWorkTypes();
+            var workTypes = WorkTypeDao.LoadWorkTypes();
 
             if (args.Length == 0)
             {
@@ -132,6 +53,9 @@ namespace CpunchApp
                 case "report":
                     GenerateReport();
                     break;
+                case "help":
+                    Help();
+                    break;
                 default:
                     Console.WriteLine("Unknown command.");
                     break;
@@ -139,10 +63,15 @@ namespace CpunchApp
         }
 
         // Methods
+        static void Help()
+        {
+            //TODO: Implement
+            throw new NotImplementedException();
+        }
 
         static void StartPunch(int workTypeIndex)
         {
-            var workTypes = WorkTypeStorage.LoadWorkTypes();
+            var workTypes = WorkTypeDao.LoadWorkTypes();
             if (workTypes.Count == 0)
             {
                 Console.WriteLine("No work types available. Add a work type first.");
@@ -157,7 +86,7 @@ namespace CpunchApp
 
             var selectedWorkType = workTypes[workTypeIndex];
 
-            var punches = PunchStorage.LoadPunchRecords();
+            var punches = PunchStorageDao.LoadPunchRecords();
 
             // Check if there's an ongoing punch
             if (punches.Exists(p => p.PunchOutTime == null))
@@ -172,14 +101,14 @@ namespace CpunchApp
                 PunchInTime = DateTime.Now
             });
 
-            PunchStorage.SavePunchRecords(punches);
+            PunchStorageDao.SavePunchRecords(punches);
 
             Console.WriteLine($"Punched in for {selectedWorkType.Name} at {DateTime.Now}");
         }
 
         static void StopPunch()
         {
-            var punches = PunchStorage.LoadPunchRecords();
+            var punches = PunchStorageDao.LoadPunchRecords();
             var ongoingPunch = punches.Find(p => p.PunchOutTime == null);
 
             if (ongoingPunch == null)
@@ -189,13 +118,13 @@ namespace CpunchApp
             }
 
             ongoingPunch.PunchOutTime = DateTime.Now;
-            PunchStorage.SavePunchRecords(punches);
+            PunchStorageDao.SavePunchRecords(punches);
 
             Console.WriteLine($"Punched out at {DateTime.Now}");
 
             // Calculate the total time and amount
             TimeSpan duration = ongoingPunch.PunchOutTime.Value - ongoingPunch.PunchInTime;
-            var workTypes = WorkTypeStorage.LoadWorkTypes();
+            var workTypes = WorkTypeDao.LoadWorkTypes();
             var workType = workTypes.Find(wt => wt.Name == ongoingPunch.WorkTypeName);
             decimal amount = (decimal)duration.TotalHours * workType.HourlyRate;
 
@@ -215,16 +144,16 @@ namespace CpunchApp
                 return;
             }
 
-            var workTypes = WorkTypeStorage.LoadWorkTypes();
+            var workTypes = WorkTypeDao.LoadWorkTypes();
             workTypes.Add(new WorkType { Name = name, HourlyRate = rate });
-            WorkTypeStorage.SaveWorkTypes(workTypes);
+            WorkTypeDao.SaveWorkTypes(workTypes);
 
             Console.WriteLine("Work type added successfully.");
         }
 
         static void ListWorkTypes()
         {
-            var workTypes = WorkTypeStorage.LoadWorkTypes();
+            var workTypes = WorkTypeDao.LoadWorkTypes();
             if (workTypes.Count == 0)
             {
                 Console.WriteLine("No work types available.");
@@ -240,8 +169,8 @@ namespace CpunchApp
 
         static void GenerateReport()
         {
-            var punches = PunchStorage.LoadPunchRecords();
-            var workTypes = WorkTypeStorage.LoadWorkTypes();
+            var punches = PunchStorageDao.LoadPunchRecords();
+            var workTypes = WorkTypeDao.LoadWorkTypes();
 
             if (punches.Count == 0)
             {
@@ -282,9 +211,10 @@ namespace CpunchApp
                 new WorkType { Name = "Pet Projects", HourlyRate = 20 },
                 new WorkType { Name = "USCIS Work", HourlyRate = 30 },
                 new WorkType { Name = "Gaming", HourlyRate = -8 },
-                new WorkType { Name = "Home Cleaning", HourlyRate = 13 }
+                new WorkType { Name = "Home Cleaning", HourlyRate = 13 },
+                new WorkType { Name = "Family Biz", HourlyRate = 30 }
             };
-            WorkTypeStorage.SaveWorkTypes(workTypes);
+            WorkTypeDao.SaveWorkTypes(workTypes);
         }
     }
 }
